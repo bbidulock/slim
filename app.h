@@ -13,6 +13,7 @@
 #define _APP_H_
 
 #include <X11/Xlib.h>
+#include <X11/Xauth.h>
 #include <signal.h>
 #include <unistd.h>
 #include <sys/wait.h>
@@ -61,6 +62,7 @@ private:
 	void CreateServerAuth();
 	char *StrConcat(const char *str1, const char *str2);
 	void UpdatePid();
+	void ReadServerAuth();
 
 	bool AuthenticateUser(bool focuspass);
 
@@ -80,7 +82,8 @@ private:
 	int Scr;
 	Panel *LoginPanel;
 	int ServerPID;
-	const char *DisplayName;
+	std::string displayName;
+	std::string screenName;
 	bool serverStarted;
 
 #ifdef USE_PAM
@@ -104,6 +107,7 @@ private:
 	bool firstlogin;
 	bool daemonmode;
 	bool force_nodaemon;
+	bool existing_server;
 	/* For testing themes */
 	char *testtheme;
 	bool testing;

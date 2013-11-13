@@ -9,6 +9,7 @@
 #endif
 #include "const.h"
 #include <fstream>
+#include <iostream>
 
 using namespace std;
 
@@ -22,17 +23,29 @@ public:
 
 	template<typename Type>
 	LogUnit & operator<<(const Type & text) {
-		logFile << text; logFile.flush();
+		if (logFile.is_open()) {
+			logFile << text; logFile.flush();
+		} else {
+			cerr << text;
+		}
 		return *this;
 	}
 
 	LogUnit & operator<<(ostream & (*fp)(ostream&)) {
-		logFile << fp; logFile.flush();
+		if (logFile.is_open()) {
+			logFile << fp; logFile.flush();
+		} else {
+			cerr << fp;
+		}
 		return *this;
 	}
 
 	LogUnit & operator<<(ios_base & (*fp)(ios_base&)) {
-		logFile << fp; logFile.flush();
+		if (logFile.is_open()) {
+			logFile << fp; logFile.flush();
+		} else {
+			cerr << fp;
+		}
 		return *this;
 	}
 } logStream;

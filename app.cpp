@@ -139,6 +139,9 @@ App::App(int argc, char** argv)
 	force_nodaemon = false;
 	firstlogin = true;
 	Dpy = NULL;
+	existing_server = false;
+	displayName = string(DISPLAY);
+	screenName = displayName + SCREEN;
 
 	/* Parse command line
 	   Note: we force a option for nodaemon switch to handle "-nodaemon" */
@@ -183,11 +186,17 @@ App::App(int argc, char** argv)
 	}
 #endif /* XNEST_DEBUG */
 
+	char *p = getenv("DISPLAY");
+	if (p && p[0]) {
+		displayName = p;
+		screenName = displayName + SCREEN;
+		existing_server = true;
+		ReadServerAuth();
+	}
+
 }
 
 void App::Run() {
-	DisplayName = DISPLAY;
-
 #ifdef XNEST_DEBUG
 	char* p = getenv("DISPLAY");
 	if (p && p[0]) {
@@ -221,11 +230,12 @@ void App::Run() {
 #ifdef USE_PAM
 	try{
 		pam.start("slim");
-		pam.set_item(PAM::Authenticator::TTY, DisplayName);
+		pam.set_item(PAM::Authenticator::TTY, screenName.c_str());
 		pam.set_item(PAM::Authenticator::Requestor, "root");
 	}
 	catch(PAM::Exception& e){
 		logStream << APPNAME << ": " << e << endl;
+		if (existing_server) exit(OPENFAILED_DISPLAY);
 		exit(ERR_EXIT);
 	};
 #endif
@@ -238,6 +248,7 @@ void App::Run() {
 			if (themeName == "default") {
 				logStream << APPNAME << ": Failed to open default theme file "
 					 << themefile << endl;
+				if (existing_server) exit(OPENFAILED_DISPLAY);
 				exit(ERR_EXIT);
 			} else {
 				logStream << APPNAME << ": Invalid theme in config: "
@@ -249,12 +260,12 @@ void App::Run() {
 		}
 	}
 
-	if (!testing) {
+	if (!testing && !existing_server) {
 		/* Create lock file */
 		LoginApp->GetLock();
 
 		/* Start x-server */
-		setenv("DISPLAY", DisplayName, 1);
+		setenv("DISPLAY", screenName.c_str(), 1);
 		signal(SIGQUIT, CatchSignal);
 		signal(SIGTERM, CatchSignal);
 		signal(SIGKILL, CatchSignal);
@@ -288,10 +299,11 @@ void App::Run() {
 	}
 
 	/* Open display */
-	if((Dpy = XOpenDisplay(DisplayName)) == 0) {
+	if((Dpy = XOpenDisplay(screenName.c_str())) == 0) {
 		logStream << APPNAME << ": could not open display '"
-			 << DisplayName << "'" << endl;
+			 << screenName << "'" << endl;
 		if (!testing) StopServer();
+		if (existing_server) exit(OPENFAILED_DISPLAY);
 		exit(ERR_EXIT);
 	}
 
@@ -424,6 +436,7 @@ bool App::AuthenticateUser(bool focuspass){
 	}
 	catch(PAM::Exception& e){
 		logStream << APPNAME << ": " << e << endl;
+		if (existing_server) exit(REMANAGE_DISPLAY);
 		exit(ERR_EXIT);
 	};
 	return true;
@@ -516,6 +529,7 @@ void App::Login() {
 	}
 	catch(PAM::Exception& e){
 		logStream << APPNAME << ": " << e << endl;
+		if (existing_server) exit(REMANAGE_DISPLAY);
 		exit(ERR_EXIT);
 	};
 #else
@@ -548,12 +562,13 @@ void App::Login() {
 		pam.setenv("USER", pw->pw_name);
 		pam.setenv("LOGNAME", pw->pw_name);
 		pam.setenv("PATH", cfg->getOption("default_path").c_str());
-		pam.setenv("DISPLAY", DisplayName);
+		pam.setenv("DISPLAY", screenName);
 		pam.setenv("MAIL", maildir.c_str());
 		pam.setenv("XAUTHORITY", xauthority.c_str());
 	}
 	catch(PAM::Exception& e){
 		logStream << APPNAME << ": " << e << endl;
+		if (existing_server) exit(REMANAGE_DISPLAY);
 		exit(ERR_EXIT);
 	}
 #endif
@@ -561,10 +576,11 @@ void App::Login() {
 #ifdef USE_CONSOLEKIT
 	/* Setup the ConsoleKit session */
 	try {
-		ck.open_session(DisplayName, pw->pw_uid);
+		ck.open_session(screenName, pw->pw_uid);
 	}
 	catch(Ck::Exception &e) {
 		logStream << APPNAME << ": " << e << endl;
+		if (existing_server) exit(REMANAGE_DISPLAY);
 		exit(ERR_EXIT);
 	}
 #endif
@@ -607,7 +623,7 @@ void App::Login() {
 		child_env[n++]=StrConcat("USER=", pw->pw_name);
 		child_env[n++]=StrConcat("LOGNAME=", pw->pw_name);
 		child_env[n++]=StrConcat("PATH=", cfg->getOption("default_path").c_str());
-		child_env[n++]=StrConcat("DISPLAY=", DisplayName);
+		child_env[n++]=StrConcat("DISPLAY=", screenName);
 		child_env[n++]=StrConcat("MAIL=", maildir.c_str());
 		child_env[n++]=StrConcat("XAUTHORITY=", xauthority.c_str());
 # ifdef USE_CONSOLEKIT
@@ -618,7 +634,7 @@ void App::Login() {
 #endif
 
 		/* Login process starts here */
-		SwitchUser Su(pw, cfg, DisplayName, child_env);
+		SwitchUser Su(pw, cfg, displayName, child_env);
 		string session = LoginPanel->getSession();
 		string loginCommand = cfg->getOption("login_cmd");
 		replaceVariables(loginCommand, SESSION_VAR, session);
@@ -628,6 +644,7 @@ void App::Login() {
 			replaceVariables(sessStart, USER_VAR, pw->pw_name);
 			system(sessStart.c_str());
 		}
+		putenv(StrConcat("XAUTHORITY=", xauthority.c_str()));
 		Su.Login(loginCommand.c_str(), mcookie.c_str());
 		_exit(OK_EXIT);
 	}
@@ -641,7 +658,7 @@ void App::Login() {
 	int status;
 	while (wpid != pid) {
 		wpid = wait(&status);
-		if (wpid == ServerPID)
+		if (ServerPID != -1 && wpid == ServerPID)
 			xioerror(Dpy);	/* Server died, simulate IO error */
 	}
 	if (WIFEXITED(status) && WEXITSTATUS(status)) {
@@ -712,6 +729,7 @@ void App::Reboot() {
 	StopServer();
 	RemoveLock();
 	system(cfg->getOption("reboot_cmd").c_str());
+	if (existing_server) exit(UNMANAGE_DISPLAY);
 	exit(OK_EXIT);
 }
 
@@ -734,6 +752,7 @@ void App::Halt() {
 	StopServer();
 	RemoveLock();
 	system(cfg->getOption("halt_cmd").c_str());
+	if (existing_server) exit(UNMANAGE_DISPLAY);
 	exit(OK_EXIT);
 }
 
@@ -782,6 +801,7 @@ void App::Exit() {
 		RemoveLock();
 	}
 	delete cfg;
+	if (existing_server) exit(REMANAGE_DISPLAY);
 	exit(OK_EXIT);
 }
 
@@ -802,6 +822,7 @@ void App::RestartServer() {
 	StopServer();
 	RemoveLock();
 	while (waitpid(-1, NULL, WNOHANG) > 0); /* Collects all dead childrens */
+	if (existing_server) exit(RESERVER_DISPLAY);
 	Run();
 }
 
@@ -871,7 +892,7 @@ int App::WaitForServer() {
 	int	cycles;
 
 	for(cycles = 0; cycles < ncycles; cycles++) {
-		if((Dpy = XOpenDisplay(DisplayName))) {
+		if((Dpy = XOpenDisplay(screenName.c_str()))) {
 			XSetIOErrorHandler(xioerror);
 			return 1;
 		} else {
@@ -1121,6 +1142,7 @@ void App::GetLock() {
 
 /* Remove lockfile and close logs */
 void App::RemoveLock() {
+	if (existing_server) return;
 	remove(cfg->getOption("lockfile").c_str());
 }
 
@@ -1132,6 +1154,7 @@ bool App::isServerStarted() {
 /* Redirect stdout and stderr to log file */
 void App::OpenLog() {
 
+	if (existing_server) return;
 	if ( !logStream.openLog( cfg->getOption("logfile").c_str() ) ) {
 		logStream <<  APPNAME << ": Could not accesss log file: " << cfg->getOption("logfile") << endl;
 		RemoveLock();
@@ -1142,6 +1165,7 @@ void App::OpenLog() {
 
 /* Relases stdout/err */
 void App::CloseLog(){
+	if (existing_server) return;
 	/* Simply closing the log */
 	logStream.closeLog();
 }
@@ -1213,7 +1237,7 @@ void App::CreateServerAuth() {
 	authfile = cfg->getOption("authfile");
 	remove(authfile.c_str());
 	putenv(StrConcat("XAUTHORITY=", authfile.c_str()));
-	Util::add_mcookie(mcookie, ":0", cfg->getOption("xauth_path"),
+	Util::add_mcookie(mcookie, displayName.c_str(), cfg->getOption("xauth_path"),
 	  authfile);
 }
 
@@ -1232,4 +1256,41 @@ void App::UpdatePid() {
 	}
 	lockfile << getpid() << std::endl;
 	lockfile.close();
+}
+
+void App::ReadServerAuth() {
+	/* read authorization from XAUTHORITY file */
+	char *xauth = getenv("XAUTHORITY");
+	if (!xauth || !xauth[0]) {
+		logStream << APPNAME << ": XAUTHORITY not defined in environment" << std::endl;
+		exit(OPENFAILED_DISPLAY);
+	}
+	FILE *authf = fopen(xauth,"r");
+	if (!authf) {
+		logStream << APPNAME << ": " << strerror(errno) << endl;
+		exit(OPENFAILED_DISPLAY);
+	}
+	/* XDM only fills out one entry */
+	Xauth *auth_in = XauReadAuth(authf);
+	if (!auth_in) {
+		logStream << APPNAME << ": no authority in file " << xauth << endl;
+		fclose(authf);
+		exit(OPENFAILED_DISPLAY);
+	}
+	char buf[256];
+	for (int i=0;i<auth_in->data_length&&i<128;i++) {
+		char c1, c2;
+		c1 = c2 = auth_in->data[i];
+		c1 >>= 4;
+		c1 &= 0x0f;
+		c2 &= 0x0f;
+		c1 = (c1 < 10) ? ('0' + c1) : ('a' + (c1 - 10));
+		c2 = (c2 < 10) ? ('0' + c2) : ('a' + (c2 - 10));
+		buf[(i<<1)+0] = c1;
+		buf[(i<<1)+1] = c2;
+		buf[(i<<1)+2] = 0;
+	}
+	mcookie = buf;
+	XauDisposeAuth(auth_in);
+	fclose(authf);
 }

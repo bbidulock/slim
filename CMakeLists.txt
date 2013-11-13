@@ -158,6 +158,7 @@ target_link_libraries(${PROJECT_NAME}
 	${X11_Xft_LIB}
 	${X11_Xrender_LIB}
 	${X11_Xmu_LIB}
+	${X11_Xau_LIB}
 	${FREETYPE_LIBRARY}
 	${JPEG_LIBRARIES}
 	${PNG_LIBRARIES}
