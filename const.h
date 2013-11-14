@@ -13,7 +13,8 @@
 #define _CONST_H_
 
 #define APPNAME	"slim"
-#define DISPLAY	":0.0"
+#define DISPLAY	":0"
+#define SCREEN	".0"
 
 #define CONSOLE_STR	 "console"
 #define HALT_STR		"halt"
@@ -29,6 +30,12 @@
 
 #define OK_EXIT	 0
 #define ERR_EXIT	1
+
+#define OBEYSESS_DISPLAY    0
+#define REMANAGE_DISPLAY    1
+#define UNMANAGE_DISPLAY    2
+#define RESERVER_DISPLAY    3
+#define OPENFAILED_DISPLAY  4
 
 /* duration for showing error messages,
  * as "login command failed", in seconds 

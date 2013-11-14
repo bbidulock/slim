@@ -53,7 +53,6 @@ void SwitchUser::Execute(const char* cmd) {
 void SwitchUser::SetClientAuth(const char* mcookie) {
 	string home = string(Pw->pw_dir);
 	string authfile = home + "/.Xauthority";
-	remove(authfile.c_str());
-	Util::add_mcookie(mcookie, ":0", cfg->getOption("xauth_path"),
+	Util::add_mcookie(mcookie, displayName.c_str(), cfg->getOption("xauth_path"),
 	  authfile);
 }
