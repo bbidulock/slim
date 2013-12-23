@@ -243,6 +243,7 @@ install(FILES slim.1 DESTINATION ${MANDIR}/man1/)
 install(FILES slimlock.1 DESTINATION ${MANDIR}/man1/)
 # configure
 install(FILES slim.conf DESTINATION ${SYSCONFDIR})
+install(FILES slimlock.conf DESTINATION ${SYSCONFDIR})
 # systemd service file
 if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 	install(FILES slim.service DESTINATION ${LIBDIR}/systemd/system)
