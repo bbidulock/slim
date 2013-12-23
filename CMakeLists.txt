@@ -24,7 +24,7 @@ set(SLIM_VERSION "${SLIM_VERSION_MAJOR}.${SLIM_VERSION_MINOR}.${SLIM_VERSION_PAT
 set(CMAKE_INSTALL_PREFIX "/usr/local" CACHE PATH "Installation Directory")
 set(PKGDATADIR "${CMAKE_INSTALL_PREFIX}/share/slim")
 set(SYSCONFDIR "/etc")
-set(LIBDIR "/lib")
+set(LIBDIR "/usr/lib")
 set(MANDIR "${CMAKE_INSTALL_PREFIX}/share/man")
 
 set(SLIM_DEFINITIONS)
