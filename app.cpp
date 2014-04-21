@@ -833,6 +833,7 @@ void App::RestartServer() {
 	RemoveLock();
 	while (waitpid(-1, NULL, WNOHANG) > 0); /* Collects all dead childrens */
 	if (existing_server) exit(RESERVER_DISPLAY);
+	if (force_nodaemon) exit(ERR_EXIT);
 	Run();
 }
 
