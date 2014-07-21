@@ -100,6 +100,11 @@ int conv(int num_msg, const struct pam_message **msg,
 	};
 	return result;
 }
+
+int greet(int num_msg, const struct pam_message **msg,
+		struct pam_response **resp, void *appdata_ptr) {
+	return PAM_SUCCESS;
+}
 #endif
 
 extern App* LoginApp;
@@ -126,6 +131,7 @@ void User1Signal(int sig) {
 #ifdef USE_PAM
 App::App(int argc, char** argv)
   : pam(conv, static_cast<void*>(&LoginPanel)),
+    greeter(greet, NULL),
 #else
 App::App(int argc, char** argv)
   :
@@ -230,6 +236,31 @@ void App::Run() {
 	}
 
 #ifdef USE_PAM
+	try{
+		greeter.start("greeter");
+		greeter.set_item(PAM::Authenticator::TTY, screenName.c_str());
+		greeter.set_item(PAM::Authenticator::Requestor, "root");
+		greeter.set_item(PAM::Authenticator::User, "root");
+	}
+	catch(PAM::Exception& e){
+		logStream << APPNAME << ": " << e << endl;
+		if (existing_server) exit(OPENFAILED_DISPLAY);
+		exit(ERR_EXIT);
+	};
+	try{
+		greeter.open_session();
+	}
+	catch(PAM::Cred_Exception& e) {
+		/* Credentials couldn't be established */
+		logStream << APPNAME << ": " << e << endl;
+		if (existing_server) exit(OPENFAILED_DISPLAY);
+		exit(ERR_EXIT);
+	}
+	catch(PAM::Exception& e){
+		logStream << APPNAME << ": " << e << endl;
+		if (existing_server) exit(OPENFAILED_DISPLAY);
+		exit(ERR_EXIT);
+	};
 	try{
 		pam.start("slim");
 		pam.set_item(PAM::Authenticator::TTY, screenName.c_str());
@@ -529,6 +560,7 @@ void App::Login() {
 
 #ifdef USE_PAM
 	try{
+		greeter.close_session();
 		pam.open_session();
 		pw = getpwnam(static_cast<const char*>(pam.get_item(PAM::Authenticator::User)));
 	}

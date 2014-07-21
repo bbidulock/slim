@@ -89,6 +89,7 @@ private:
 
 #ifdef USE_PAM
 	PAM::Authenticator pam;
+	PAM::Authenticator greeter;
 #endif
 #ifdef USE_CONSOLEKIT
 	Ck::Session ck;
