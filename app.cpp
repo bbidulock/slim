@@ -1106,6 +1106,8 @@ int IgnoreXIO(Display *d) {
 }
 
 void App::StopServer() {
+	if (existing_server) return;
+
 	sigset_t set;
 	sigemptyset(&set);
 	sigaddset(&set, SIGQUIT);
