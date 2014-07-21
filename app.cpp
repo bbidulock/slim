@@ -271,7 +271,6 @@ void App::Run() {
 		setenv("DISPLAY", screenName.c_str(), 1);
 		signal(SIGQUIT, CatchSignal);
 		signal(SIGTERM, CatchSignal);
-		signal(SIGKILL, CatchSignal);
 		signal(SIGINT, CatchSignal);
 		signal(SIGHUP, CatchSignal);
 		signal(SIGPIPE, CatchSignal);
@@ -299,8 +298,6 @@ void App::Run() {
 		StartServer();
 #endif
 	}
-	if (!testing && existing_server)
-		signal(SIGUSR2, User2Signal);
 
 #ifdef USE_PAM
 	switch ((greeter_pid = fork())) {
@@ -657,6 +654,19 @@ void App::Login() {
 	}
 #endif
 
+	if (existing_server) {
+		/* so login session has permission to send us signals */
+		/* but ignore anything nasty */
+		setresuid(-1, -1, pw->pw_uid);
+		signal(SIGQUIT, SIG_IGN);
+		signal(SIGTERM, SIG_IGN);
+		signal(SIGINT,  SIG_IGN);
+		signal(SIGHUP,  SIG_IGN);
+		signal(SIGPIPE, SIG_IGN);
+		signal(SIGUSR1, User1Signal);
+		signal(SIGUSR2, User2Signal);
+	}
+
 	/* Create new process */
 	pid = fork();
 	if(pid == 0) {
@@ -773,6 +783,16 @@ void App::Login() {
 		logStream << APPNAME << ": " << e << endl;
 	};
 #endif
+	if (existing_server) {
+		setresuid(-1, -1, getuid());
+		signal(SIGQUIT, CatchSignal);
+		signal(SIGTERM, CatchSignal);
+		signal(SIGINT,  CatchSignal);
+		signal(SIGHUP,  CatchSignal);
+		signal(SIGPIPE, CatchSignal);
+		signal(SIGUSR1, User1Signal);
+		signal(SIGUSR2, SIG_IGN);
+	}
 
 /* Close all clients */
 	KillAllClients(False);
