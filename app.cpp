@@ -128,6 +128,11 @@ void User1Signal(int sig) {
 	signal(sig, User1Signal);
 }
 
+void User2Signal(int sig) {
+	signal(sig, User2Signal);
+	kill(getppid(), sig);
+}
+
 #ifdef USE_PAM
 App::App(int argc, char** argv)
   : pam(conv, static_cast<void*>(&LoginPanel)),
@@ -199,6 +204,9 @@ App::App(int argc, char** argv)
 		displayName = p;
 		screenName = displayName + SCREEN;
 		existing_server = true;
+	}
+
+	if (existing_server) {
 		ReadServerAuth();
 	}
 
@@ -234,59 +242,6 @@ void App::Run() {
 			}
 		}
 	}
-
-#ifdef USE_PAM
-	switch ((greeter_pid = fork())) {
-	case 0: /* the child */
-		try{
-			greeter.start("greeter");
-			greeter.set_item(PAM::Authenticator::TTY, screenName.c_str());
-			greeter.set_item(PAM::Authenticator::Requestor, "root");
-			greeter.set_item(PAM::Authenticator::User, "root");
-		}
-		catch(PAM::Exception& e){
-			logStream << APPNAME << ": " << e << endl;
-			if (existing_server) exit(OPENFAILED_DISPLAY);
-			exit(ERR_EXIT);
-		};
-		try{
-			greeter.setenv("XDG_SESSION_CLASS", "greeter");
-			greeter.setenv("XDG_SESSION_TYPE", "x11");
-			greeter.open_session();
-		}
-		catch(PAM::Cred_Exception& e) {
-			/* Credentials couldn't be established */
-			logStream << APPNAME << ": " << e << endl;
-			if (existing_server) exit(OPENFAILED_DISPLAY);
-			exit(ERR_EXIT);
-		}
-		kill(getpid(), SIGSTOP);
-		try {
-			greeter.close_session();
-		}
-		catch(PAM::Exception& e){
-			logStream << APPNAME << ": " << e << endl;
-		};
-		exit(0);
-	case -1:
-		logStream << APPNAME << ": Fork failed" << endl;
-		if (existing_server) exit(OPENFAILED_DISPLAY);
-		exit(ERR_EXIT);
-	default: /* the parent */
-		break;
-	}
-
-	try{
-		pam.start("slim");
-		pam.set_item(PAM::Authenticator::TTY, screenName.c_str());
-		pam.set_item(PAM::Authenticator::Requestor, "root");
-	}
-	catch(PAM::Exception& e){
-		logStream << APPNAME << ": " << e << endl;
-		if (existing_server) exit(OPENFAILED_DISPLAY);
-		exit(ERR_EXIT);
-	};
-#endif
 
 	bool loaded = false;
 	while (!loaded) {
@@ -343,8 +298,66 @@ void App::Run() {
 		CreateServerAuth();
 		StartServer();
 #endif
-
 	}
+	if (!testing && existing_server)
+		signal(SIGUSR2, User2Signal);
+
+#ifdef USE_PAM
+	switch ((greeter_pid = fork())) {
+	case 0: /* the child */
+		try{
+			greeter.start("greeter");
+			greeter.set_item(PAM::Authenticator::TTY, screenName.c_str());
+			greeter.set_item(PAM::Authenticator::Requestor, "root");
+			if (getenv("REMOTEHOST"))
+				pam.set_item(PAM::Authenticator::Host, getenv("REMOTEHOST"));
+			greeter.set_item(PAM::Authenticator::User, "root");
+		}
+		catch(PAM::Exception& e){
+			logStream << APPNAME << ": " << e << endl;
+			if (existing_server) exit(OPENFAILED_DISPLAY);
+			exit(ERR_EXIT);
+		};
+		try{
+			greeter.setenv("XDG_SESSION_CLASS", "greeter");
+			greeter.setenv("XDG_SESSION_TYPE", "x11");
+			greeter.open_session();
+		}
+		catch(PAM::Cred_Exception& e) {
+			/* Credentials couldn't be established */
+			logStream << APPNAME << ": " << e << endl;
+			if (existing_server) exit(OPENFAILED_DISPLAY);
+			exit(ERR_EXIT);
+		}
+		kill(getpid(), SIGSTOP);
+		try {
+			greeter.close_session();
+		}
+		catch(PAM::Exception& e){
+			logStream << APPNAME << ": " << e << endl;
+		};
+		exit(0);
+	case -1:
+		logStream << APPNAME << ": Fork failed" << endl;
+		if (existing_server) exit(OPENFAILED_DISPLAY);
+		exit(ERR_EXIT);
+	default: /* the parent */
+		break;
+	}
+
+	try{
+		pam.start("slim");
+		pam.set_item(PAM::Authenticator::TTY, screenName.c_str());
+		pam.set_item(PAM::Authenticator::Requestor, "root");
+		if (getenv("REMOTEHOST"))
+			pam.set_item(PAM::Authenticator::Host, getenv("REMOTEHOST"));
+	}
+	catch(PAM::Exception& e){
+		logStream << APPNAME << ": " << e << endl;
+		if (existing_server) exit(OPENFAILED_DISPLAY);
+		exit(ERR_EXIT);
+	};
+#endif
 
 	/* Open display */
 	if((Dpy = XOpenDisplay(screenName.c_str())) == 0) {
@@ -587,25 +600,11 @@ void App::Login() {
 			}
 		} while (WIFSTOPPED(status));
 	}
-	try{
-		pam.setenv("XDG_SESSION_CLASS", "user");
-		pam.setenv("XDG_SESSION_TYPE", "x11");
-		pam.open_session();
-		pw = getpwnam(static_cast<const char*>(pam.get_item(PAM::Authenticator::User)));
-	}
-	catch(PAM::Cred_Exception& e){
-		/* Credentials couldn't be established */
-		logStream << APPNAME << ": " << e << endl;
-		return;
-	}
-	catch(PAM::Exception& e){
-		logStream << APPNAME << ": " << e << endl;
-		if (existing_server) exit(REMANAGE_DISPLAY);
-		exit(ERR_EXIT);
-	};
+	pw = getpwnam(static_cast<const char*>(pam.get_item(PAM::Authenticator::User)));
 #else
 	pw = getpwnam(LoginPanel->GetName().c_str());
 #endif
+
 	endpwent();
 	if(pw == 0)
 		return;
@@ -636,6 +635,8 @@ void App::Login() {
 		pam.setenv("DISPLAY", screenName);
 		pam.setenv("MAIL", maildir.c_str());
 		pam.setenv("XAUTHORITY", xauthority.c_str());
+		pam.setenv("XDG_SESSION_CLASS", "user");
+		pam.setenv("XDG_SESSION_TYPE", "x11");
 	}
 	catch(PAM::Exception& e){
 		logStream << APPNAME << ": " << e << endl;
@@ -660,6 +661,19 @@ void App::Login() {
 	pid = fork();
 	if(pid == 0) {
 #ifdef USE_PAM
+		try{
+			pam.open_session();
+		}
+		catch(PAM::Cred_Exception& e){
+			/* Credentials couldn't be established */
+			logStream << APPNAME << ": " << e << endl;
+			_exit(ERR_EXIT);
+		}
+		catch(PAM::Exception& e){
+			logStream << APPNAME << ": " << e << endl;
+			_exit(ERR_EXIT);
+		};
+
 		/* Get a copy of the environment and close the child's copy */
 		/* of the PAM-handle. */
 		char** child_env = pam.getenvlist();
@@ -717,6 +731,14 @@ void App::Login() {
 		}
 		putenv(StrConcat("XAUTHORITY=", xauthority.c_str()));
 		Su.Login(loginCommand.c_str(), mcookie.c_str());
+#ifdef USE_PAM
+		try{
+			pam.close_session();
+		}
+		catch(PAM::Exception& e){
+			logStream << APPNAME << ": " << e << endl;
+		};
+#endif
 		_exit(OK_EXIT);
 	}
 
@@ -748,15 +770,6 @@ void App::Login() {
 		ck.close_session();
 	}
 	catch(Ck::Exception &e) {
-		logStream << APPNAME << ": " << e << endl;
-	};
-#endif
-
-#ifdef USE_PAM
-	try{
-		pam.close_session();
-	}
-	catch(PAM::Exception& e){
 		logStream << APPNAME << ": " << e << endl;
 	};
 #endif
