@@ -248,6 +248,9 @@ void App::Run() {
 		exit(ERR_EXIT);
 	};
 	try{
+		unsetenv("XDG_SESSION_ID");
+		setenv("XDG_SESSION_CLASS", "greeter", 1);
+		setenv("XDG_SESSION_TYPE", "x11", 1);
 		greeter.open_session();
 	}
 	catch(PAM::Cred_Exception& e) {
@@ -561,6 +564,9 @@ void App::Login() {
 #ifdef USE_PAM
 	try{
 		greeter.close_session();
+		unsetenv("XDG_SESSION_ID");
+		unsetenv("XDG_SESSION_CLASS");
+		setenv("XDG_SESSION_TYPE", "x11", 1);
 		pam.open_session();
 		pw = getpwnam(static_cast<const char*>(pam.get_item(PAM::Authenticator::User)));
 	}
