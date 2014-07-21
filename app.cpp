@@ -248,9 +248,8 @@ void App::Run() {
 		exit(ERR_EXIT);
 	};
 	try{
-		unsetenv("XDG_SESSION_ID");
-		setenv("XDG_SESSION_CLASS", "greeter", 1);
-		setenv("XDG_SESSION_TYPE", "x11", 1);
+		greeter.setenv("XDG_SESSION_CLASS", "greeter");
+		greeter.setenv("XDG_SESSION_TYPE", "x11");
 		greeter.open_session();
 	}
 	catch(PAM::Cred_Exception& e) {
@@ -563,10 +562,15 @@ void App::Login() {
 
 #ifdef USE_PAM
 	try{
+		int fd;
+
 		greeter.close_session();
-		unsetenv("XDG_SESSION_ID");
-		setenv("XDG_SESSION_CLASS", "user", 1);
-		setenv("XDG_SESSION_TYPE", "x11", 1);
+		/* hack to make the session really close */
+		for (fd = 4; fd < 16; fd++)
+			if (fd != ConnectionNumber(Dpy))
+				close(fd);
+		pam.setenv("XDG_SESSION_CLASS", "user");
+		pam.setenv("XDG_SESSION_TYPE", "x11");
 		pam.open_session();
 		pw = getpwnam(static_cast<const char*>(pam.get_item(PAM::Authenticator::User)));
 	}
