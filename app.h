@@ -41,6 +41,7 @@ public:
 	int GetServerPID();
 	void RestartServer();
 	void StopServer();
+	void KillGreeter();
 
 	/* Lock functions */
 	void GetLock();

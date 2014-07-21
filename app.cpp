@@ -120,6 +120,7 @@ void CatchSignal(int sig) {
 	if (LoginApp->isServerStarted())
 		LoginApp->StopServer();
 
+	LoginApp->KillGreeter();
 	LoginApp->RemoveLock();
 	exit(ERR_EXIT);
 }
@@ -361,7 +362,10 @@ void App::Run() {
 	if((Dpy = XOpenDisplay(screenName.c_str())) == 0) {
 		logStream << APPNAME << ": could not open display '"
 			 << screenName << "'" << endl;
-		if (!testing) StopServer();
+		if (!testing) {
+			StopServer();
+			KillGreeter();
+		}
 		if (existing_server) exit(OPENFAILED_DISPLAY);
 		exit(ERR_EXIT);
 	}
@@ -597,6 +601,7 @@ void App::Login() {
 				break;
 			}
 		} while (WIFSTOPPED(status));
+		greeter_pid = 0;
 	}
 	pw = getpwnam(static_cast<const char*>(pam.get_item(PAM::Authenticator::User)));
 #else
@@ -661,7 +666,6 @@ void App::Login() {
 	sigaddset(&set, SIGINT);
 	sigaddset(&set, SIGHUP);
 	sigaddset(&set, SIGPIPE);
-	sigaddset(&set, SIGTERM);
 
 	if (existing_server) {
 		/* so login session has permission to send us signals */
@@ -832,6 +836,7 @@ void App::Reboot() {
 
 	/* Stop server and reboot */
 	StopServer();
+	KillGreeter();
 	RemoveLock();
 	system(cfg->getOption("reboot_cmd").c_str());
 	if (existing_server) exit(UNMANAGE_DISPLAY);
@@ -855,6 +860,7 @@ void App::Halt() {
 
 	/* Stop server and halt */
 	StopServer();
+	KillGreeter();
 	RemoveLock();
 	system(cfg->getOption("halt_cmd").c_str());
 	if (existing_server) exit(UNMANAGE_DISPLAY);
@@ -903,6 +909,7 @@ void App::Exit() {
 	} else {
 		delete LoginPanel;
 		StopServer();
+		KillGreeter();
 		RemoveLock();
 	}
 	delete cfg;
@@ -925,6 +932,7 @@ void App::RestartServer() {
 #endif
 
 	StopServer();
+	KillGreeter();
 	RemoveLock();
 	while (waitpid(-1, NULL, WNOHANG) > 0); /* Collects all dead childrens */
 	if (existing_server) exit(RESERVER_DISPLAY);
@@ -1086,6 +1094,7 @@ int App::StartServer() {
 		if(WaitForServer() == 0) {
 			logStream << APPNAME << ": unable to connect to X server" << endl;
 			StopServer();
+			KillGreeter();
 			ServerPID = -1;
 			exit(ERR_EXIT);
 		}
@@ -1103,6 +1112,15 @@ jmp_buf CloseEnv;
 int IgnoreXIO(Display *d) {
 	logStream << APPNAME << ": connection to X server lost." << endl;
 	longjmp(CloseEnv, 1);
+}
+
+void App::KillGreeter() {
+	if (!greeter_pid)
+		return;
+	kill(greeter_pid, SIGTERM);
+	kill(greeter_pid, SIGCONT);
+	kill(greeter_pid, SIGKILL);
+	greeter_pid = 0;
 }
 
 void App::StopServer() {
