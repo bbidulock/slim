@@ -8,6 +8,8 @@
 */
 #include <string>
 #include <iostream>
+#include <unistd.h>
+#include <security/pam_modules.h>
 #include "PAM.h"
 
 namespace PAM {
@@ -204,6 +206,17 @@ namespace PAM {
 				throw Exception(pam_handle, "pam_close_session", last_result);
 
 			case PAM_SUCCESS:
+			/* pam_systemd is leaving a session file descriptor open and logind
+			   will not fully release the session until it is closed.  Dig it out
+			   and close it: yes, it is a hack... */
+				void *systemd_fd;
+
+				if (pam_get_data(pam_handle, "systemd.session-fd", (const void **)&systemd_fd)
+						== PAM_SUCCESS) {
+					int fd = (int)(long)systemd_fd - 1;
+
+					::close(fd); /* buh, bye */
+				}
 				break;
 		};
 		switch((last_result=pam_setcred(pam_handle, PAM_DELETE_CRED))){
