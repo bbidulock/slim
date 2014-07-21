@@ -204,12 +204,12 @@ App::App(int argc, char** argv)
 		displayName = p;
 		screenName = displayName + SCREEN;
 		existing_server = true;
-	}
-
-	if (existing_server) {
 		ReadServerAuth();
+		/* clean up signal mask from parent */
+		sigset_t set;
+		sigfillset(&set);
+		sigprocmask(SIG_UNBLOCK, &set, NULL);
 	}
-
 }
 
 void App::Run() {
@@ -270,11 +270,12 @@ void App::Run() {
 		/* Start x-server */
 		setenv("DISPLAY", screenName.c_str(), 1);
 		signal(SIGQUIT, CatchSignal);
-		signal(SIGTERM, CatchSignal);
-		signal(SIGINT, CatchSignal);
-		signal(SIGHUP, CatchSignal);
+		signal(SIGINT,  CatchSignal);
+		signal(SIGHUP,  CatchSignal);
 		signal(SIGPIPE, CatchSignal);
+		signal(SIGTERM, CatchSignal);
 		signal(SIGUSR1, User1Signal);
+		signal(SIGUSR2, User2Signal);
 
 #ifndef XNEST_DEBUG
 		if (!force_nodaemon && cfg->getOption("daemon") == "yes") {
@@ -654,22 +655,28 @@ void App::Login() {
 	}
 #endif
 
+	sigset_t set;
+	sigemptyset(&set);
+	sigaddset(&set, SIGQUIT);
+	sigaddset(&set, SIGINT);
+	sigaddset(&set, SIGHUP);
+	sigaddset(&set, SIGPIPE);
+	sigaddset(&set, SIGTERM);
+
 	if (existing_server) {
 		/* so login session has permission to send us signals */
 		/* but ignore anything nasty */
 		setresuid(-1, -1, pw->pw_uid);
-		signal(SIGQUIT, SIG_IGN);
-		signal(SIGTERM, SIG_IGN);
-		signal(SIGINT,  SIG_IGN);
-		signal(SIGHUP,  SIG_IGN);
-		signal(SIGPIPE, SIG_IGN);
-		signal(SIGUSR1, User1Signal);
-		signal(SIGUSR2, User2Signal);
+		sigprocmask(SIG_BLOCK, &set, NULL);
 	}
 
 	/* Create new process */
 	pid = fork();
 	if(pid == 0) {
+		if (existing_server) {
+			sigfillset(&set);
+			sigprocmask(SIG_UNBLOCK, &set, NULL);
+		}
 #ifdef USE_PAM
 		try{
 			pam.open_session();
@@ -785,13 +792,7 @@ void App::Login() {
 #endif
 	if (existing_server) {
 		setresuid(-1, -1, getuid());
-		signal(SIGQUIT, CatchSignal);
-		signal(SIGTERM, CatchSignal);
-		signal(SIGINT,  CatchSignal);
-		signal(SIGHUP,  CatchSignal);
-		signal(SIGPIPE, CatchSignal);
-		signal(SIGUSR1, User1Signal);
-		signal(SIGUSR2, SIG_IGN);
+		sigprocmask(SIG_UNBLOCK, &set, NULL);
 	}
 
 /* Close all clients */
@@ -1013,8 +1014,6 @@ int App::WaitForServer() {
 
 
 int App::StartServer() {
-	ServerPID = fork();
-
 	static const int MAX_XSERVER_ARGS = 256;
 	static char* server[MAX_XSERVER_ARGS+2] = { NULL };
 	server[0] = (char *)cfg->getOption("default_xserver").c_str();
@@ -1061,7 +1060,7 @@ int App::StartServer() {
 	}
 	server[argc] = NULL;
 
-	switch(ServerPID) {
+	switch((ServerPID = fork())) {
 	case 0:
 		signal(SIGTTIN, SIG_IGN);
 		signal(SIGTTOU, SIG_IGN);
@@ -1107,12 +1106,16 @@ int IgnoreXIO(Display *d) {
 }
 
 void App::StopServer() {
-	signal(SIGQUIT, SIG_IGN);
-	signal(SIGINT, SIG_IGN);
-	signal(SIGHUP, SIG_IGN);
-	signal(SIGPIPE, SIG_IGN);
+	sigset_t set;
+	sigemptyset(&set);
+	sigaddset(&set, SIGQUIT);
+	sigaddset(&set, SIGINT);
+	sigaddset(&set, SIGHUP);
+	sigaddset(&set, SIGPIPE);
+	sigaddset(&set, SIGUSR1);
+	sigaddset(&set, SIGUSR2);
+	sigprocmask(SIG_BLOCK, &set, NULL);
 	signal(SIGTERM, SIG_DFL);
-	signal(SIGKILL, SIG_DFL);
 
 	/* Catch X error */
 	XSetIOErrorHandler(IgnoreXIO);
