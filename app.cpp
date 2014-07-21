@@ -906,7 +906,7 @@ void App::Exit() {
 		RemoveLock();
 	}
 	delete cfg;
-	if (existing_server) exit(REMANAGE_DISPLAY);
+	if (existing_server) exit(OBEYSESS_DISPLAY);
 	exit(OK_EXIT);
 }
 
