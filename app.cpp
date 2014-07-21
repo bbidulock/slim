@@ -236,33 +236,46 @@ void App::Run() {
 	}
 
 #ifdef USE_PAM
-	try{
-		greeter.start("greeter");
-		greeter.set_item(PAM::Authenticator::TTY, screenName.c_str());
-		greeter.set_item(PAM::Authenticator::Requestor, "root");
-		greeter.set_item(PAM::Authenticator::User, "root");
-	}
-	catch(PAM::Exception& e){
-		logStream << APPNAME << ": " << e << endl;
+	switch ((greeter_pid = fork())) {
+	case 0: /* the child */
+		try{
+			greeter.start("greeter");
+			greeter.set_item(PAM::Authenticator::TTY, screenName.c_str());
+			greeter.set_item(PAM::Authenticator::Requestor, "root");
+			greeter.set_item(PAM::Authenticator::User, "root");
+		}
+		catch(PAM::Exception& e){
+			logStream << APPNAME << ": " << e << endl;
+			if (existing_server) exit(OPENFAILED_DISPLAY);
+			exit(ERR_EXIT);
+		};
+		try{
+			greeter.setenv("XDG_SESSION_CLASS", "greeter");
+			greeter.setenv("XDG_SESSION_TYPE", "x11");
+			greeter.open_session();
+		}
+		catch(PAM::Cred_Exception& e) {
+			/* Credentials couldn't be established */
+			logStream << APPNAME << ": " << e << endl;
+			if (existing_server) exit(OPENFAILED_DISPLAY);
+			exit(ERR_EXIT);
+		}
+		kill(getpid(), SIGSTOP);
+		try {
+			greeter.close_session();
+		}
+		catch(PAM::Exception& e){
+			logStream << APPNAME << ": " << e << endl;
+		};
+		exit(0);
+	case -1:
+		logStream << APPNAME << ": Fork failed" << endl;
 		if (existing_server) exit(OPENFAILED_DISPLAY);
 		exit(ERR_EXIT);
-	};
-	try{
-		greeter.setenv("XDG_SESSION_CLASS", "greeter");
-		greeter.setenv("XDG_SESSION_TYPE", "x11");
-		greeter.open_session();
+	default: /* the parent */
+		break;
 	}
-	catch(PAM::Cred_Exception& e) {
-		/* Credentials couldn't be established */
-		logStream << APPNAME << ": " << e << endl;
-		if (existing_server) exit(OPENFAILED_DISPLAY);
-		exit(ERR_EXIT);
-	}
-	catch(PAM::Exception& e){
-		logStream << APPNAME << ": " << e << endl;
-		if (existing_server) exit(OPENFAILED_DISPLAY);
-		exit(ERR_EXIT);
-	};
+
 	try{
 		pam.start("slim");
 		pam.set_item(PAM::Authenticator::TTY, screenName.c_str());
@@ -561,14 +574,20 @@ void App::Login() {
 	pid_t pid;
 
 #ifdef USE_PAM
-	try{
-		int fd;
+	{
+		int status;
 
-		greeter.close_session();
-		/* hack to make the session really close */
-		for (fd = 4; fd < 16; fd++)
-			if (fd != ConnectionNumber(Dpy))
-				close(fd);
+		/* wait for greeter session to die */
+		do {
+			kill(greeter_pid, SIGCONT);
+			if (waitpid(greeter_pid, &status, WUNTRACED)) {
+				if (errno == EINTR)
+					continue;
+				break;
+			}
+		} while (WIFSTOPPED(status));
+	}
+	try{
 		pam.setenv("XDG_SESSION_CLASS", "user");
 		pam.setenv("XDG_SESSION_TYPE", "x11");
 		pam.open_session();
