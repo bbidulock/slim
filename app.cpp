@@ -264,19 +264,20 @@ void App::Run() {
 		}
 	}
 
+	signal(SIGQUIT, CatchSignal);
+	signal(SIGINT,  CatchSignal);
+	signal(SIGHUP,  CatchSignal);
+	signal(SIGPIPE, CatchSignal);
+	signal(SIGTERM, CatchSignal);
+	signal(SIGUSR1, User1Signal);
+	signal(SIGUSR2, User2Signal);
+
 	if (!testing && !existing_server) {
 		/* Create lock file */
 		LoginApp->GetLock();
 
 		/* Start x-server */
 		setenv("DISPLAY", screenName.c_str(), 1);
-		signal(SIGQUIT, CatchSignal);
-		signal(SIGINT,  CatchSignal);
-		signal(SIGHUP,  CatchSignal);
-		signal(SIGPIPE, CatchSignal);
-		signal(SIGTERM, CatchSignal);
-		signal(SIGUSR1, User1Signal);
-		signal(SIGUSR2, User2Signal);
 
 #ifndef XNEST_DEBUG
 		if (!force_nodaemon && cfg->getOption("daemon") == "yes") {
@@ -306,9 +307,12 @@ void App::Run() {
 	case 0: /* the child */
 		{
 			sigset_t set;
-			sigfillset(&set);
-			sigprocmask(SIG_UNBLOCK, &set, NULL);
+			sigemptyset(&set);
+			sigaddset(&set, SIGTTIN);
+			sigaddset(&set, SIGTTOU);
+			sigprocmask(SIG_SETMASK, &set, NULL);
 		}
+		setpgid(0, getpid());
 		try{
 			greeter.start(PAM_SESSION_SLIM_GREETER);
 			greeter.set_item(PAM::Authenticator::TTY, screenName.c_str());
@@ -346,6 +350,7 @@ void App::Run() {
 		if (existing_server) exit(OPENFAILED_DISPLAY);
 		exit(ERR_EXIT);
 	default: /* the parent */
+		setpgid(greeter_pid, greeter_pid);
 		break;
 	}
 
@@ -1062,9 +1067,14 @@ int App::StartServer() {
 
 	switch((ServerPID = fork())) {
 	case 0:
-		signal(SIGTTIN, SIG_IGN);
-		signal(SIGTTOU, SIG_IGN);
-		signal(SIGUSR1, SIG_IGN);
+		{
+			sigset_t set;
+			sigemptyset(&set);
+			sigaddset(&set, SIGTTIN);
+			sigaddset(&set, SIGTTOU);
+			sigaddset(&set, SIGUSR1);
+			sigprocmask(SIG_SETMASK, &set, NULL);
+		}
 		setpgid(0,getpid());
 
 		execvp(server[0], server);
@@ -1076,6 +1086,7 @@ int App::StartServer() {
 		break;
 
 	default:
+		setpgid(ServerPID, ServerPID);
 		errno = 0;
 		if(!ServerTimeout(0, (char *)"")) {
 			ServerPID = -1;
