@@ -304,6 +304,11 @@ void App::Run() {
 #ifdef USE_PAM
 	switch ((greeter_pid = fork())) {
 	case 0: /* the child */
+		{
+			sigset_t set;
+			sigfillset(&set);
+			sigprocmask(SIG_UNBLOCK, &set, NULL);
+		}
 		try{
 			greeter.start(PAM_SESSION_SLIM_GREETER);
 			greeter.set_item(PAM::Authenticator::TTY, screenName.c_str());
@@ -660,27 +665,16 @@ void App::Login() {
 	}
 #endif
 
-	sigset_t set;
-	sigemptyset(&set);
-	sigaddset(&set, SIGQUIT);
-	sigaddset(&set, SIGINT);
-	sigaddset(&set, SIGHUP);
-	sigaddset(&set, SIGPIPE);
-
-	if (existing_server) {
+	if (existing_server)
 		/* so login session has permission to send us signals */
-		/* but ignore anything nasty */
 		setresuid(-1, -1, pw->pw_uid);
-		sigprocmask(SIG_BLOCK, &set, NULL);
-	}
 
 	/* Create new process */
 	pid = fork();
 	if(pid == 0) {
-		if (existing_server) {
-			sigfillset(&set);
-			sigprocmask(SIG_UNBLOCK, &set, NULL);
-		}
+		sigset_t set;
+		sigfillset(&set);
+		sigprocmask(SIG_UNBLOCK, &set, NULL);
 #ifdef USE_PAM
 		try{
 			pam.open_session();
@@ -794,10 +788,8 @@ void App::Login() {
 		logStream << APPNAME << ": " << e << endl;
 	};
 #endif
-	if (existing_server) {
+	if (existing_server)
 		setresuid(-1, -1, getuid());
-		sigprocmask(SIG_UNBLOCK, &set, NULL);
-	}
 
 /* Close all clients */
 	KillAllClients(False);
@@ -1134,8 +1126,8 @@ void App::StopServer() {
 	sigaddset(&set, SIGPIPE);
 	sigaddset(&set, SIGUSR1);
 	sigaddset(&set, SIGUSR2);
+	sigaddset(&set, SIGTERM);
 	sigprocmask(SIG_BLOCK, &set, NULL);
-	signal(SIGTERM, SIG_DFL);
 
 	/* Catch X error */
 	XSetIOErrorHandler(IgnoreXIO);
