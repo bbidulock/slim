@@ -305,7 +305,7 @@ void App::Run() {
 	switch ((greeter_pid = fork())) {
 	case 0: /* the child */
 		try{
-			greeter.start("greeter");
+			greeter.start(PAM_SESSION_SLIM_GREETER);
 			greeter.set_item(PAM::Authenticator::TTY, screenName.c_str());
 			greeter.set_item(PAM::Authenticator::Requestor, "root");
 			if (getenv("REMOTEHOST"))
@@ -345,7 +345,7 @@ void App::Run() {
 	}
 
 	try{
-		pam.start("slim");
+		pam.start(PAM_SESSION_SLIM_LOGIN);
 		pam.set_item(PAM::Authenticator::TTY, screenName.c_str());
 		pam.set_item(PAM::Authenticator::Requestor, "root");
 		if (getenv("REMOTEHOST"))

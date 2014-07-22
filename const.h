@@ -52,4 +52,8 @@
 /* max height/width for images */
 #define MAX_DIMENSION 10000
 
+#define PAM_SESSION_SLIM_LOGIN	    "slim"
+#define PAM_SESSION_SLIM_GREETER    "slim-greeter"
+#define PAM_SESSION_SLIM_AUTOLOGIN  "slim-autologin"
+
 #endif /* _CONST_H_ */
