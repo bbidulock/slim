@@ -617,18 +617,18 @@ void App::Login() {
 		pam.setenv("XDG_SESSION_CLASS", "user");
 		pam.setenv("XDG_SESSION_TYPE", "x11");
 		pam.open_session();
+		pw = getpwnam(static_cast<const char*>(pam.get_item(PAM::Authenticator::User)));
 	}
 	catch(PAM::Cred_Exception& e){
 		/* Credentials couldn't be established */
 		logStream << APPNAME << ": " << e << endl;
-		_exit(ERR_EXIT);
+		return;
 	}
 	catch(PAM::Exception& e){
 		logStream << APPNAME << ": " << e << endl;
-		_exit(ERR_EXIT);
+		if (existing_server) exit(REMANAGE_DISPLAY);
+		exit(ERR_EXIT);
 	};
-
-	pw = getpwnam(static_cast<const char*>(pam.get_item(PAM::Authenticator::User)));
 #else
 	pw = getpwnam(LoginPanel->GetName().c_str());
 #endif
