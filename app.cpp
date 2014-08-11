@@ -501,7 +501,7 @@ bool App::AuthenticateUser(bool focuspass){
 	/* Reset the username */
 	try{
 		if (!focuspass)
-			pam.set_item(PAM::Authenticator::User, "");
+			pam.set_item(PAM::Authenticator::User, NULL);
 		pam.authenticate();
 	}
 	catch(PAM::Auth_Exception& e){
