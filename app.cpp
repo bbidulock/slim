@@ -613,6 +613,21 @@ void App::Login() {
 		} while (WIFSTOPPED(status));
 		greeter_pid = 0;
 	}
+	try{
+		pam.setenv("XDG_SESSION_CLASS", "user");
+		pam.setenv("XDG_SESSION_TYPE", "x11");
+		pam.open_session();
+	}
+	catch(PAM::Cred_Exception& e){
+		/* Credentials couldn't be established */
+		logStream << APPNAME << ": " << e << endl;
+		_exit(ERR_EXIT);
+	}
+	catch(PAM::Exception& e){
+		logStream << APPNAME << ": " << e << endl;
+		_exit(ERR_EXIT);
+	};
+
 	pw = getpwnam(static_cast<const char*>(pam.get_item(PAM::Authenticator::User)));
 #else
 	pw = getpwnam(LoginPanel->GetName().c_str());
@@ -648,27 +663,12 @@ void App::Login() {
 		pam.setenv("DISPLAY", screenName);
 		pam.setenv("MAIL", maildir.c_str());
 		pam.setenv("XAUTHORITY", xauthority.c_str());
-		pam.setenv("XDG_SESSION_CLASS", "user");
-		pam.setenv("XDG_SESSION_TYPE", "x11");
 	}
 	catch(PAM::Exception& e){
 		logStream << APPNAME << ": " << e << endl;
 		if (existing_server) exit(REMANAGE_DISPLAY);
 		exit(ERR_EXIT);
 	}
-	try{
-		pam.open_session();
-	}
-	catch(PAM::Cred_Exception& e){
-		/* Credentials couldn't be established */
-		logStream << APPNAME << ": " << e << endl;
-		_exit(ERR_EXIT);
-	}
-	catch(PAM::Exception& e){
-		logStream << APPNAME << ": " << e << endl;
-		_exit(ERR_EXIT);
-	};
-
 #endif
 
 #ifdef USE_CONSOLEKIT
