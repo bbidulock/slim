@@ -656,6 +656,19 @@ void App::Login() {
 		if (existing_server) exit(REMANAGE_DISPLAY);
 		exit(ERR_EXIT);
 	}
+	try{
+		pam.open_session();
+	}
+	catch(PAM::Cred_Exception& e){
+		/* Credentials couldn't be established */
+		logStream << APPNAME << ": " << e << endl;
+		_exit(ERR_EXIT);
+	}
+	catch(PAM::Exception& e){
+		logStream << APPNAME << ": " << e << endl;
+		_exit(ERR_EXIT);
+	};
+
 #endif
 
 #ifdef USE_CONSOLEKIT
@@ -681,19 +694,6 @@ void App::Login() {
 		sigfillset(&set);
 		sigprocmask(SIG_UNBLOCK, &set, NULL);
 #ifdef USE_PAM
-		try{
-			pam.open_session();
-		}
-		catch(PAM::Cred_Exception& e){
-			/* Credentials couldn't be established */
-			logStream << APPNAME << ": " << e << endl;
-			_exit(ERR_EXIT);
-		}
-		catch(PAM::Exception& e){
-			logStream << APPNAME << ": " << e << endl;
-			_exit(ERR_EXIT);
-		};
-
 		/* Get a copy of the environment and close the child's copy */
 		/* of the PAM-handle. */
 		char** child_env = pam.getenvlist();
@@ -751,14 +751,6 @@ void App::Login() {
 		}
 		putenv(StrConcat("XAUTHORITY=", xauthority.c_str()));
 		Su.Login(loginCommand.c_str(), mcookie.c_str());
-#ifdef USE_PAM
-		try{
-			pam.close_session();
-		}
-		catch(PAM::Exception& e){
-			logStream << APPNAME << ": " << e << endl;
-		};
-#endif
 		_exit(OK_EXIT);
 	}
 
@@ -795,6 +787,15 @@ void App::Login() {
 #endif
 	if (existing_server)
 		setresuid(-1, -1, getuid());
+
+#ifdef USE_PAM
+	try{
+		pam.close_session();
+	}
+	catch(PAM::Exception& e){
+		logStream << APPNAME << ": " << e << endl;
+	};
+#endif
 
 /* Close all clients */
 	KillAllClients(False);
